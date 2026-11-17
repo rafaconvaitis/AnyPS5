@@ -211,6 +211,23 @@ class EncodingTests(unittest.TestCase):
                           stderr.buffer.getvalue().decode("utf-8"))
             self.assertFalse(output.exists())
 
+    @unittest.skipUnless(spawnable_python(), "requires a Python that can be spawned")
+    def test_a_source_path_outside_the_ansi_code_page_is_read_as_the_worktree_root(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary).resolve() / "Ágata"
+            source.mkdir()
+            subprocess.run(["git", "init", "-q", str(source)], check=True)
+            tools = str(Path(gate.__file__).resolve().parent)
+            code = (f"import sys; from pathlib import Path; sys.path.insert(0, {tools!r}); import vulkan_validation_gate as gate; "
+                    f"source = Path({str(source)!r}); root = Path(gate.git(source, 'rev-parse', '--show-toplevel')); "
+                    f"print(root.resolve() == source)")
+            environment = {name: value for name, value in os.environ.items() if name not in ("PYTHONUTF8", "PYTHONIOENCODING")}
+            environment["PYTHONUTF8"] = "0"
+            result = subprocess.run([*spawnable_python(), "-c", code], capture_output=True, encoding="utf-8", errors="replace",
+                                    env=environment)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout.strip(), "True")
+
 
 @unittest.skipUnless(shutil.which("cmake") and shutil.which("ninja") and shutil.which("ctest"), "requires CMake, Ninja and CTest")
 class FixtureTests(unittest.TestCase):
